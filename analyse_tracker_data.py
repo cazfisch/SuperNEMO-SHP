@@ -39,7 +39,8 @@ filedir = 'Files/'
 vertical_dir = 'vertical trajectory plots/'
 
 first_level_file = osdir+filedir+f'tracks_firstlevel_max20_min8_minpos6.txt' # to be filled
-second_level_file = osdir+filedir+f'tracks_secondlevel_cutoff_0.1.txt' # to be filled
+second_level_file_10 = osdir+filedir+f'tracks_secondlevel_cutoff_0.10.txt'
+second_level_file = osdir+filedir+f'tracks_secondlevel_cutoff_0.05.txt' # to be filled
 # good_tracks_file = osdir+'good_tracks_with_fiterror_cutoff_0.2.txt' # to be filled
 old_second_level_file = osdir+filedir+f'tracks_secondlevel_cutoff_0.4.txt'
 good_tracks_file = second_level_file
@@ -84,7 +85,7 @@ def change_rows(cell_nums):
         else:
             new_cell_nums.append(cell)
     
-    return np.array(new_cell_nums)
+    return np.array(new_cell_nums)   #  new_cell_nums
 
 def filtering():
 
@@ -155,7 +156,7 @@ def first_level_filtering(max_hits=20, min_hits=8, min_positive=6):
     f.close()
     print('\ntotal tracks: ', counter)
 
-def second_level_filtering(resid_cutoff=0.1):
+def second_level_filtering(resid_cutoff=0.05):
 
     filename = first_level_file
     data = np.loadtxt(filename, dtype=str)
@@ -666,16 +667,16 @@ def plot_vertical_fractional(vert_dist, horz_dist, vert_err, event_number, side,
     line_xs = np.arange(0,10)*cell_diameter
     cell_boundaries = np.arange(0.5,8.5)*cell_diameter + cell_radius
 
-    fig, ax = plt.subplots(tight_layout=True, figsize=(3,6))
+    fig, ax = plt.subplots(tight_layout=True, figsize=(5,6))
 
     # title = 'Vertical (fractional) trajectory against horizontal distance\nfor track [{} - {}]'.format(event_number, side)
-    ax.errorbar(horz_dist, vert_dist, yerr=vert_err, xerr=cell_err, fmt='ko')
-    ax.plot(line_xs, linear(line_xs, *popt), 'r-')
-    # ax.set_title('Event {}, {}'.format(event_number, side.capitalize()))
+    ax.errorbar(horz_dist, vert_dist, yerr=vert_err, xerr=cell_err, fmt='o', color='k') #355C7D
+    ax.plot(line_xs, linear(line_xs, *popt), '-', color='r') #F67280
+    ax.set_title('Event {}, {}'.format(event_number, side.capitalize()))
     # fig.suptitle(title)
-    ax.set_xlabel('x /m') #'distance from source foil /m', fontsize='large'
+    ax.set_xlabel('layer axis /m') #'distance from source foil /m', fontsize='large'
     ax.set_ylabel('z /m', rotation='horizontal') #fontsize='large'
-    ax.yaxis.set_label_coords(-0.1,1.)
+    ax.yaxis.set_label_coords(-0.05,1.)
     ax.set_xlim(line_xs[0], line_xs[-1])
     if invert:
         ax.invert_xaxis()
@@ -690,7 +691,7 @@ def plot_vertical_fractional(vert_dist, horz_dist, vert_err, event_number, side,
     elif interpolate==True:
         fig.savefig(osdir+vertical_dir+'track{0}_{1}_interpolated.png'.format(event_number, side))
     else:
-        fig.savefig(osdir+vertical_dir+'track{0}_{1}_poster.png'.format(event_number, side))
+        fig.savefig(osdir+vertical_dir+'track{0}_{1}.png'.format(event_number, side))
 
     plt.show()
 
@@ -865,7 +866,7 @@ def plot_3D_2sides_events(e_nums_list:list, scatter=True):
     # ax.legend()
     ax.view_init(25,-15)
     # ax.set_title(title)
-    fig.savefig(osdir+'3D_2sides_events{}.png'.format(e_nums_list))
+    fig.savefig(osdir+'3D_2sides_events{}.png'.format(e_nums_list), transparent=True)
     plt.show()
 
 def plot_3D_2sides_event(event_number, scatter=True):
@@ -1392,25 +1393,26 @@ def write_mean_tpt_to_file(param='all events'):
         for event in tree:
 
             print(event.event_number)
-            cell_nums = np.array(event.tracker_cell_num)
+            cell_nums = list(event.tracker_cell_num)
             cell_nums = change_rows(cell_nums)
 
-            if 8 > len(cell_nums) or len(cell_nums) > 40: 
+            if len(cell_nums) > 50: 
             # filter out certain events that have almost all of the cells triggered
                 continue
 
-            bot_arr = np.array(event.tracker_timestamp_r5)*tdc2sec
-            top_arr = np.array(event.tracker_timestamp_r6)*tdc2sec
-            an_arr = np.array(event.tracker_time_anode)
-            bot_time = bot_arr - an_arr
-            top_time = top_arr - an_arr 
+            r5, r6, an = list(event.tracker_timestamp_r5), list(event.tracker_timestamp_r6), list(event.tracker_time_anode)
+            # bot_arr = np.array(event.tracker_timestamp_r5)*tdc2sec
+            # top_arr = np.array(event.tracker_timestamp_r6)*tdc2sec
+            # an_arr = np.array(event.tracker_time_anode)
+            # bot_time = bot_arr - an_arr
+            # top_time = top_arr - an_arr 
 
             for i in range(len(cell_nums)):
 
-                if an_arr[i] < 0 or bot_time[i] < 0 or top_time[i] < 0:
+                if an[i] < 0 or (r5[i]*tdc2sec - an[i]) < 0 or (r6[i]*tdc2sec - an[i]) < 0:
                     continue
 
-                tdt = (top_time[i]+bot_time[i])*1e6
+                tdt = ((r5[i]+r6[i])*tdc2sec - 2*an[i])*1e6
                 ind = all_cell_nums.index(cell_nums[i])
                 tdt_mega_list[ind].append(tdt)
 
@@ -1432,6 +1434,56 @@ def write_mean_tpt_to_file(param='all events'):
                 print(all_cell_nums[j], 'empty!\n')
 
         f.close()
+
+    # if param == 'all events':
+
+    #     all_cell_nums = get_all_cell_nums()
+    #     tdt_mega_list = [[] for i in range(len(all_cell_nums))]
+    #     # mean_tdts = np.zeros(len(all_cell_nums))
+
+    #     for event in tree:
+
+    #         print(event.event_number)
+    #         cell_nums = np.array(event.tracker_cell_num)
+    #         cell_nums = change_rows(cell_nums)
+
+    #         if 8 > len(cell_nums) or len(cell_nums) > 40: 
+    #         # filter out certain events that have almost all of the cells triggered
+    #             continue
+
+    #         bot_arr = np.array(event.tracker_timestamp_r5)*tdc2sec
+    #         top_arr = np.array(event.tracker_timestamp_r6)*tdc2sec
+    #         an_arr = np.array(event.tracker_time_anode)
+    #         bot_time = bot_arr - an_arr
+    #         top_time = top_arr - an_arr 
+
+    #         for i in range(len(cell_nums)):
+
+    #             if an_arr[i] < 0 or bot_time[i] < 0 or top_time[i] < 0:
+    #                 continue
+
+    #             tdt = (top_time[i]+bot_time[i])*1e6
+    #             ind = all_cell_nums.index(cell_nums[i])
+    #             tdt_mega_list[ind].append(tdt)
+
+    #     f = open(mean_tpts_file, 'w')
+
+    #     for j in range(len(all_cell_nums)):
+
+    #         if len(tdt_mega_list[j]) != 0:
+    #             mean_tdt = np.mean(tdt_mega_list[j])
+    #             tdt_stdev = np.std(tdt_mega_list[j])
+    #             # mean_tdts[j] = mean_tdt
+    #             f.write('{} {:.4f} {:.4f}\n'.format(all_cell_nums[j], mean_tdt, tdt_stdev))
+
+    #             tdt_file = osdir+f'TPT/tpt_allevents_cell_{all_cell_nums[j]}.txt'
+    #             np.savetxt(tdt_file, tdt_mega_list[j])
+
+    #         else:
+    #             f.write('{} nan nan\n'.format(all_cell_nums[j]))
+    #             print(all_cell_nums[j], 'empty!\n')
+
+    #     f.close()
     
     elif param == 'good tracks':
 
@@ -1450,6 +1502,8 @@ def write_mean_tpt_to_file(param='all events'):
             print(event_number, sides[i])
             l, r, s, top, bot = filter_a_track(event_number, sides[i])
             cell_nums = cell_num_(l, r, s)
+
+            if 1517 in cell_nums: print('\nThis one!\n')
 
             tdts = top + bot
             for j in range(len(cell_nums)):
@@ -1593,7 +1647,7 @@ def hist2D_tpts(param='all'):
     fig, ax = plt.subplots(figsize=(6,6), tight_layout=True)
     title = f'Mean cathode total propagation time for each cell - \'{param}\''
 
-    c = ax.pcolormesh(rows, layers, Z, edgecolors='k', linewidths=1, cmap='hot')
+    c = ax.pcolormesh(rows, layers, Z, edgecolors='k', linewidths=1, cmap='plasma')
     ax.plot(np.arange(41.5,56.5), np.zeros_like(np.arange(41.5,56.5)), 'k', linewidth=4) # source foil line
     cbar = fig.colorbar(c, ax=ax, ticks=[55,60,65,70,75,80])
     cbar.ax.set_yticklabels(['55µs','60µs','65µs','70µs','75µs','80µs'])
@@ -1733,7 +1787,7 @@ def write_hits_cells_tofile(param='all', with_limit=False):
     if with_limit: filename = osdir+filedir+f'hits_cells_{param}_max50.txt'
     f = open(filename, 'w')
 
-    all_cell_nums = get_all_cell_nums()
+    all_cell_nums = np.array(get_all_cell_nums())
     hits_counts = np.zeros_like(all_cell_nums)
 
     if param == 'all':
@@ -1744,6 +1798,8 @@ def write_hits_cells_tofile(param='all', with_limit=False):
                 if len(cell_nums) > 50: continue
             cell_nums = change_rows(cell_nums)
             print(event.event_number)
+            print()
+            print(cell_nums)
             for cell in cell_nums:
                 hits_counts[all_cell_nums==cell] += 1
 
@@ -1769,6 +1825,26 @@ def write_hits_cells_tofile(param='all', with_limit=False):
                     # f.write(f'{cell_nums[i]}\n')
                     hits_counts[all_cell_nums==cell_nums[i]] += 1
 
+        for j in range(len(all_cell_nums)):
+            f.write('{} {}\n'.format(all_cell_nums[j], hits_counts[j]))
+
+    elif param == 'positive anodes':
+
+        for event in tree:
+            cell_nums = list(event.tracker_cell_num) #np.array(event.tracker_cell_num)
+            if with_limit: 
+                if len(cell_nums) > 50: continue
+            cell_nums = change_rows(cell_nums)
+            
+            an_arr = list(event.tracker_time_anode)
+            print(event.event_number)
+
+            for i in range(len(cell_nums)):
+                if an_arr[i] > 0:
+                    # f.write(f'{cell_nums[i]}\n')
+                    hits_counts[all_cell_nums==cell_nums[i]] += 1
+
+        print(hits_counts)
         for j in range(len(all_cell_nums)):
             f.write('{} {}\n'.format(all_cell_nums[j], hits_counts[j]))
 
@@ -2172,10 +2248,12 @@ def change_bb_decay_file(margin=0.1):
     f.close()
     newfile.close()
 
-def get_fit_error(layer, top, bot, method=1):
+def get_fit_error(layers, cells, top, bot, method=1):
 
     vert_dist = vertical_fractional(top, bot)
-    horz_dist = layers_to_distances(layer)
+    tpts = top + bot
+    horz_dist = layers_to_distances(layers)
+    vert_errs = vertical_error(vert_dist, tpts, cells)
 
     if method==1:
         popt, pcov = curve_fit(linear, horz_dist, vert_dist)
@@ -2184,6 +2262,14 @@ def get_fit_error(layer, top, bot, method=1):
         x = horz_dist[:,None]
         reg = LinearRegression().fit(x, vert_dist)
         return reg.score(x,vert_dist)
+    if method==3:
+        df = len(layers)
+        fitting_params = 2 # linear regression
+        popt, pcov = curve_fit(linear, horz_dist, vert_dist, sigma=vert_errs)
+        resids = vert_dist - linear(horz_dist, *popt)
+        chisq = np.sum((resids/vert_errs)**2)
+        reduced_chisq = chisq / (df-fitting_params)
+        return reduced_chisq
 
 def goodness_of_fit_tofile():
 
@@ -2397,6 +2483,49 @@ def hist3D_residuals():
 
     plt.show()
 
+def custom_resids_hist_410(resid_cutoff = 0.20):
+
+    filename = '/Users/casimirfisch/Desktop/Uni/SHP/Plots/Files/cell410_tracksforhist.txt'
+    data = np.loadtxt(filename, dtype=str)
+    e_nums, sides = data[:,0].astype(int), data[:,1]
+
+    resids = []
+
+    for i in range(len(e_nums)):
+
+        event_number = e_nums[i]
+        tree.GetEntry(event_number)
+
+        l, r, s, top, bot = filter_a_track(event_number, sides[i])
+        residuals = get_residuals(l, top, bot)
+        
+        # if np.any(residuals > resid_cutoff):
+        #     continue
+        
+        cell_nums = cell_num_(l,r,s)
+        # if 410 not in cell_nums: 
+        #     continue
+    
+        print(event_number, sides[i])
+        
+        residual = residuals[cell_nums == 410][0]
+        resids.append(residual)
+
+    resids = np.array(resids)*100
+    np.savetxt(osdir+filedir+'residuals_410_cutoff_0.20.txt', resids)
+
+    fig = plt.figure(figsize=(5,6), tight_layout=True)
+    plt.hist(resids, bins=30, color='indigo', histtype='step') # range=[-30,30]
+    plt.axvline(5, color='k', linestyle='dashed', linewidth=1)
+    plt.axvline(-5, color='k', linestyle='dashed', linewidth=1)
+    plt.xlabel('vertical residuals /cm')
+    plt.ylabel('counts')
+    plt.xlim(-15,15)
+    plt.text(10, 60, 'filtered out', fontsize='large', horizontalalignment='center', verticalalignment='center')
+    plt.text(-10, 60, 'filtered out', fontsize='large', horizontalalignment='center', verticalalignment='center')
+    plt.title('Cell 410 (row 45, layer 5, Italy)')
+    fig.savefig(osdir+histdir+'hist_resids_cell_410_20cm.png')
+
 def hist_resids_cell(cell_num, plot_or_not=True, blip=0, with_sign=False):
     
     # alter to retrieve data from files instead.
@@ -2460,7 +2589,7 @@ def hist_resids_cell_fromfile(cell_num, margin=0.1, param='good tracks', with_si
 
     if param == 'good tracks':
         resid_file = osdir+f'residuals - {param}/residuals_cell_{cell_num}.txt'
-    elif param == 'good tracks (old)':
+    elif param == 'good tracks (10cm)':
         resid_file = osdir+f'residuals - {param}/residuals_cell_{cell_num}.txt'
     elif param == 'really good tracks':
         resid_file = osdir+f'residuals - {param}/residuals_cell_{cell_num}.txt'
@@ -2474,16 +2603,20 @@ def hist_resids_cell_fromfile(cell_num, margin=0.1, param='good tracks', with_si
     mean_resid, resid_std = np.mean(resids), np.std(resids)
     print('\nCell Number: {}\nMean residual error = {:.4f} / stdev = {:.4f}\n'.format(cell_num, mean_resid, resid_std))
 
-    fig = plt.figure(figsize=(5,5), tight_layout=True)
-    plt.hist(resids, bins=50, color='indigo', histtype='step', range=[-10,10]) #
-    # plt.axvline(mean_resid, color='k', linestyle='dashed', linewidth=1)
+    fig = plt.figure(figsize=(5,6), tight_layout=True)
+    plt.hist(resids, bins=30, color='indigo', histtype='step') # range=[-30,30]
+    plt.axvline(5, color='k', linestyle='dashed', linewidth=1)
+    plt.axvline(-5, color='k', linestyle='dashed', linewidth=1)
     plt.xlabel('vertical residuals /cm')
     plt.ylabel('counts')
+    plt.xlim(-10,10)
+    plt.text(7.5, 80, 'filtered out', fontsize='large', horizontalalignment='center', verticalalignment='center')
+    plt.text(-7.5, 80, 'filtered out', fontsize='large', horizontalalignment='center', verticalalignment='center')
 
     if with_sign:
         plt.title('Cell {} (row {}, layer {}, {})'.format(cell_num, row, layer, side_str))
         # plt.title('Vertical (fractional) residual error for cell {0} ({1}.{2}.{3})\nN = {4}'.format(cell_num, layer, row, side, len(resids)))
-        fig.savefig(osdir+histdir+f'hist_resids_cell_{cell_num}_withsign.png')
+        fig.savefig(osdir+histdir+f'hist_resids_cell_{cell_num}_withsign_{param}.png')
     else:
         plt.title('Cell {} (row {}, layer {}, {})'.format(cell_num, row, layer, side_str))
         # plt.title('Vertical (fractional) residual error for cell {0} ({1}.{2}.{3})\nN = {4} | mean = {5:.4f}'.format(cell_num, layer, row, side, len(resids), mean_resid))
@@ -2517,7 +2650,7 @@ def residual_error_forallcells(param='good tracks', margin=0.05):
 
     all_resids = np.array(all_resids)*100 #cm
     mean_resid, resid_std = np.mean(all_resids), np.std(all_resids)
-    n_bins, hist_range = 50, [-10,10]
+    n_bins, hist_range = 50, [-5,5]
     hist, bin_edges = np.histogram(all_resids, bins=n_bins, range=hist_range)
     bincenters = np.mean(np.vstack([bin_edges[0:-1],bin_edges[1:]]), axis=0)
     popt, pcov = curve_fit(gaussian, xdata=bincenters, ydata=hist, p0=[1000,0,10])
@@ -2526,7 +2659,7 @@ def residual_error_forallcells(param='good tracks', margin=0.05):
 
     print(mean_resid, resid_std)
 
-    fig = plt.figure(figsize=(5,5), tight_layout=True)
+    fig = plt.figure(figsize=(5,6), tight_layout=True)
     plt.hist(all_resids, bins=n_bins, histtype='step', range=hist_range, color='k', linewidth=1) #range=[-.05,.05]
     # plt.axvline(mean_resid, color='k', linestyle='dashed', linewidth=1)
     x = np.linspace(hist_range[0], hist_range[-1], 500) #np.min(all_resids), np.max(all_resids)
@@ -2620,7 +2753,8 @@ def fit_error_onetrack(event_number, side, method=1):
 
     tree.GetEntry(event_number)
     l, r, s, top, bot = filter_a_track(event_number, side)
-    fit_err = get_fit_error(l, top, bot, method=method)
+    cells = cell_num_(l, r, s)
+    fit_err = get_fit_error(l, cells, top, bot, method=method)
     return fit_err
 
 def is_a_good_track(event_number, side):
@@ -2720,81 +2854,7 @@ def bias_in_residuals():
 
     plt.show()
 
-def hist3D_residuals_bis(min_resids=10, with_sign=False):
-
-    all_cell_nums = np.array(get_all_cell_nums())
-    l, r, s = cell_id(all_cell_nums)
-    l = adjusted_layers(l, s)
-    mean_resids = []
-
-    for cell_num in all_cell_nums:
-
-        resid_file = osdir+f'Residuals 2/residuals_cell_{cell_num}.txt'
-        if Path(resid_file).exists() == False: 
-            # print(resid_file, 'bad file')
-            mean_resids.append(np.nan)
-            continue
-        residuals = np.loadtxt(resid_file)
-        if with_sign==False: residuals = np.abs(residuals)
-
-        if residuals.size > min_resids: mean_resids.append(np.mean(residuals))
-        else: mean_resids.append(np.nan)
-    
-    mean_resids = np.array(mean_resids)
-    bad_indices = np.isnan(mean_resids) 
-    good_indices = ~bad_indices  # remove the nan values
-
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-
-    zmin = 0
-    zmax = mean_resids[good_indices].max()
-
-    xs = np.arange(41.5, 55.5, 0.1)
-    zs = np.arange(zmin, int(zmax)+0.1, 0.1)
-    X, Z = np.meshgrid(xs, zs)
-    Y = np.zeros_like(X)
-    ax.plot_surface(X, Y, Z, alpha=0.5, color='k')
-
-    major_xticks = np.arange(42,56)
-    major_yticks = np.arange(-8.5,9.5)
-    layer_ticks = [8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8]
-
-    ax.set_xlim(41.5,55.5)
-    ax.set_ylim(-8.5,8.5)
-    ax.set_xticks(major_xticks)
-    ax.set_yticks(major_yticks)
-    ax.set_yticklabels(layer_ticks)
-    ax.xaxis.grid(which='minor')
-    ax.yaxis.grid(which='minor')
-
-    ax.set_xlabel('Row number')
-    ax.set_ylabel('Layer number')
-    ax.set_zlabel('Mean residual value')
-    # title = 'Histogram of the mean residual value across all cells'
-
-    x, y, z = r[good_indices]-.25, l[good_indices]-.25, zmin #np.zeros(num_bars)
-    dx, dy, dz = np.ones_like(z)*1/2, np.ones_like(z)*1/2, mean_resids[good_indices] - zmin
-
-    cmap = cm.get_cmap('magma')
-    max_height = np.max(dz)   # get range of colorbars so we can normalize
-    min_height = np.min(dz)
-    rgba = [cmap((k-min_height)/max_height) for k in dz]
-
-    ax.bar3d(x, y, z, dx, dy, dz, zsort='average', color=rgba) 
-    ax.text(42, -4, max_height, 'Italy',  fontsize='large', horizontalalignment='center', verticalalignment='center', fontfamily='serif')
-    ax.text(42, +4, max_height, 'France', fontsize='large', horizontalalignment='center', verticalalignment='center', fontfamily='serif')
-
-    ax.view_init(60,-20)
-
-    if with_sign==False:
-        fig.savefig(osdir+hist3ddir+f'hist3D_resid_min_{min_resids}.png')
-    else:
-        fig.savefig(osdir+hist3ddir+f'hist3D_resid_min_{min_resids}_withsign.png')
-
-    plt.show()
-
-def hist2D_cells_resids(min_resids=50, param='good tracks', margin=0.1, method='sigma'):
+def hist3D_residuals_bis(min_resids=30, param='good tracks', margin=0.1, method='sigma'):
 
     all_cell_nums = np.array(get_all_cell_nums())
     l, r, s = cell_id(all_cell_nums)
@@ -2839,8 +2899,120 @@ def hist2D_cells_resids(min_resids=50, param='good tracks', margin=0.1, method='
     good_indices = ~bad_indices  # remove the nan values
     overall_mean, overall_stdev = np.mean(mean_resids[good_indices]), np.mean(stdev_resids[good_indices])
 
+    if method=='mean':
+        z_arr = mean_resids
+    elif method=='stdev':
+        z_arr = stdev_resids
+    else:
+        z_arr = sigmas
+
+    good_indices = ~np.isnan(z_arr)
+
     print('\nMean residual error for a cell: {:.4f}\n'.format(overall_mean))
     print('\nMean residual stdev for a cell: {:.4f}\n'.format(overall_stdev))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+
+    zmin = 1
+    zmax = z_arr[good_indices].max()
+
+    xs = np.arange(41.5, 55.5, 0.1)
+    zs = np.arange(zmin, int(zmax)+0.1, 0.1)
+    X, Z = np.meshgrid(xs, zs)
+    Y = np.zeros_like(X)
+    # ax.plot_surface(X, Y, Z, alpha=0.5, color='k')
+
+    major_xticks = np.arange(42,56)
+    major_yticks = np.arange(-8.5,9.5)
+    layer_ticks = [8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8]
+
+    ax.set_xlim(41.5,55.5)
+    ax.set_ylim(-8.5,8.5)
+    ax.set_xticks(major_xticks)
+    ax.set_yticks(major_yticks)
+    ax.set_yticklabels(layer_ticks)
+    ax.xaxis.grid(which='minor')
+    ax.yaxis.grid(which='minor')
+
+    ax.set_xlabel('Row number')
+    ax.set_ylabel('Layer number')
+    ax.set_zlabel('Mean residual value')
+    # title = 'Histogram of the mean residual value across all cells'
+
+    x, y, z = r[good_indices]-.25, l[good_indices]-.25, zmin #np.zeros(num_bars)
+    dx, dy, dz = np.ones_like(z)*1/2, np.ones_like(z)*1/2, z_arr[good_indices] - zmin
+
+    cmap = cm.get_cmap('magma')
+    max_height = np.max(dz)   # get range of colorbars so we can normalize
+    min_height = np.min(dz)
+    rgba = [cmap((k-min_height)/max_height) for k in dz]
+
+    ax.bar3d(x, y, z, dx, dy, dz, zsort='average', color=rgba) 
+    ax.text(42, -4, zmax, 'Italy',  fontsize='large', horizontalalignment='center', verticalalignment='center', fontfamily='serif')
+    ax.text(42, +4, zmax, 'France', fontsize='large', horizontalalignment='center', verticalalignment='center', fontfamily='serif')
+
+    ax.view_init(40,-20) #  25,-15
+
+    
+    fig.savefig(osdir+hist3ddir+f'hist3D_resid_min_{min_resids}_{method}.png', transparent = True)
+
+    plt.show()
+
+def hist2D_cells_resids(min_resids=50, param='good tracks', margin=0.1, method='sigma'):
+
+    all_cell_nums = np.array(get_all_cell_nums())
+    l, r, s = cell_id(all_cell_nums)
+    l = adjusted_layers(l, s)
+    mean_resids = []
+    stdev_resids = []
+    sigmas = []
+    number_of_resids = []
+    number_lowcount_cells = 0
+
+    for cell_num in all_cell_nums:
+
+        layer, row, side = cell_id(cell_num)
+
+        if param == 'good tracks':
+            resid_file = osdir+f'residuals - {param}/residuals_cell_{cell_num}.txt'
+        elif param == 'really good tracks':
+            resid_file = osdir+f'residuals - {param}/residuals_cell_{cell_num}.txt'
+        elif param == 'bb decays':
+            resid_file = osdir+f'residuals - {param} {margin}/residuals_cell_{cell_num}.txt'
+        if Path(resid_file).exists() == False:
+            mean_resids.append(np.nan); stdev_resids.append(np.nan); sigmas.append(np.nan)
+            print(f'bad cell: {cell_num} ({layer}.{row}.{side})')
+            continue
+
+        residuals = np.loadtxt(resid_file)
+
+        if cell_num in [1434, 1435, 484]:  # unusually high residuals 1461
+            mean_resids.append(np.nan); stdev_resids.append(np.nan); sigmas.append(np.nan)
+            print(f'bad cell: {cell_num} ({layer}.{row}.{side}) - unusual residuals')
+
+        elif residuals.size > min_resids: 
+
+            sigma = get_sigma(cell_num, param, margin, plot_or_not=False)
+            sigmas.append(sigma); mean_resids.append(np.mean(np.abs(residuals))); stdev_resids.append(np.std(residuals))
+            # print(f'good cell: {cell_num} ({layer}.{row}.{side}) - {residuals.size} residuals')
+            number_of_resids.append(residuals.size)
+
+        else: 
+            mean_resids.append(np.nan); stdev_resids.append(np.nan); sigmas.append(np.nan)
+            print(f'bad cell: {cell_num} ({layer}.{row}.{side}) - {residuals.size} residuals')
+            number_lowcount_cells+=1
+    
+    mean_resids, stdev_resids, sigmas = np.array(mean_resids)*100, np.array(stdev_resids)*100, np.array(sigmas)*100 #cm
+    bad_indices = np.isnan(mean_resids) 
+    good_indices = ~bad_indices  # remove the nan values
+    overall_mean, overall_stdev = np.mean(mean_resids[good_indices]), np.mean(stdev_resids[good_indices])
+
+    print('\nMean residual error for a cell: {:.4f}\n'.format(overall_mean))
+    print('\nMean residual stdev for a cell: {:.4f}\n'.format(overall_stdev))
+
+    print('Average number of resids for good cells =', np.mean(number_of_resids))
+    print(f'Number of cells with a count below {min_resids} =', number_lowcount_cells)
 
     layer_ticks = [8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8]
 
@@ -2851,7 +3023,7 @@ def hist2D_cells_resids(min_resids=50, param='good tracks', margin=0.1, method='
         Z_ = mean_resids.reshape(18, 14)
     elif method=='stdev': 
         Z_ = stdev_resids.reshape(18, 14)
-        ticks, ticklabels = [2.2,2.0,1.8,1.6,1.4], ['2.2cm','2.0cm','1.8cm','1.6cm','1.4cm']
+        ticks, ticklabels = [1.6,1.5,1.4,1.3,1.2,1.1], ['1.6cm','1.5cm','1.4cm','1.3cm','1.2cm', '1.1cm']
     else: 
         Z_ = sigmas.reshape(18, 14)
 
@@ -2867,7 +3039,7 @@ def hist2D_cells_resids(min_resids=50, param='good tracks', margin=0.1, method='
     c = ax.pcolormesh(rows, layers, Z, edgecolors='k', linewidths=1)
     ax.plot(np.arange(41.5,56.5), np.zeros_like(np.arange(41.5,56.5)), 'k', linewidth=4) # source foil line
     # fig.colorbar(c, ax=ax)
-    cbar = fig.colorbar(c, ax=ax, ticks=ticks)
+    cbar = fig.colorbar(c, ax=ax, ticks=ticks) #ticks=ticks
     cbar.ax.set_yticklabels(ticklabels)
     ax.set_xlabel('rows')
     ax.set_ylabel('layers')
@@ -2919,20 +3091,22 @@ def hist_fit_error(method=1, param='goodtracks'):
         inds = np.isfinite(fit_errs) * (0.095 < fit_errs) * (fit_errs < 0.105)
     elif method==2:
         inds = np.isfinite(fit_errs) * (fit_errs < 0.1)
-    interesting_enums, interesting_sides = e_nums[inds], sides[inds]
+    elif method == 3:
+        inds = fit_errs > 50
+    interesting_enums, interesting_sides, interesting_fiterrs = e_nums[inds], sides[inds], fit_errs[inds]
 
     for i in range(len(interesting_enums)):
-        print(interesting_enums[i], interesting_sides[i])
+        print(interesting_enums[i], interesting_sides[i], interesting_fiterrs[i])
 
     good_errs = fit_errs[good_inds]
 
-    mean_err = np.mean(good_errs)
+    # mean_err = np.mean(good_errs)
     fig = plt.figure()
-    plt.hist(good_errs, bins=30, color='forestgreen', histtype='step')
-    plt.axvline(mean_err, color='k', linestyle='dashed', linewidth=1)
+    plt.hist(good_errs, bins=100, color='forestgreen', histtype='step', range=[0,50])
+    # plt.axvline(mean_err, color='k', linestyle='dashed', linewidth=1)
     plt.xlabel('fit error')
     plt.ylabel('Counts')
-    plt.title('Goodness of fit for \'{}\', method {}\nmean = {:.2f}'.format(param, method, mean_err))
+    # plt.title('Goodness of fit for \'{}\', method {}\nmean = {:.2f}'.format(param, method, mean_err))
     fig.savefig(osdir+histdir+f'hist_fiterror_{param}_method{method}.png')
     plt.show()
 
@@ -3138,17 +3312,59 @@ def get_sigma(cell_num, param='good tracks', margin=0.1, plot_or_not=False):
 
 def main():
 
-    # scan_and_plot(2133, 'italy')
-    # scan_and_plot(423, 'italy')
+    plot_xy_event(1818)
+
+    # second_level_filtering()
+
+    # write_residuals_to_file()
+
+    # write_fit_error_tofile(3)
+    # hist_fit_error(method=3)
+
+    # write_hits_cells_tofile('positive anodes', with_limit=True)
+    # hist2D_hits('positive anodes', with_limit=True)
+
+    # write_mean_tpt_to_file('good tracks')
+
+    # write_residuals_to_file()
+
+    # hist2D_cells_resids(method='stdev', min_resids=50)
+    # hist2D_tpts()
+
+    # custom_resids_hist_410()
+    # hist3D_residuals_bis(method='stdev')
+    
+    # hist_resids_cell_fromfile(410, with_sign=True, param='good tracks (10cm)')
+
+    # residual_error_forallcells()
+
+    # hist_resids_cell_fromfile(cell_num_(0,55,0), with_sign=True)
+    # hist_resids_cell_fromfile(1407, with_sign=True)
+    # hist_resids_cell_fromfile(1461, with_sign=True)
+    # hist_resids_cell_fromfile(1489, with_sign=True)
+
+    # hist_tpt_fromfile_cell(cell_num_(6,49,0))
+    # hist2D_tpts()
+    # good_tracks_incells([1517])
+
+    # scan_and_plot(4728, 'france')
+    # scan_and_plot(4723, 'italy')
     # scan_and_plot(1642, 'italy')
     # scan_and_plot(3480, 'france')
+
+    # 85, 4709, 4723 it, 4728 fr
 
     # for cell in [434,462,445,384,447,466,475,458,1458,1441,1415,1424,1460,1496,1514,1407,1489,1507,1419,1501]:
     #     hist_resids_cell_fromfile(cell, with_sign=True)
 
     # get_sigma(450)
 
-    plot_3D_2sides_events([3188,23,325,13529])
+    # plot_3D_2sides_events([3188,23,325,13529])
+
+    # hist3D_residuals_bis(method='stdev')
+
+    # plot_3D_2sides_event(14844)
+    
 
     # hist_resids_cell_fromfile(cell_num_(7,53,0), with_sign=True)
     # hist_resids_cell_fromfile(cell_num_(6,55,1), with_sign=True)
@@ -3204,7 +3420,7 @@ def main():
     # plot_3D_2sides_event(72)
 
     # count_lines_in_file('/Users/casimirfisch/Desktop/Uni/SHP/Plots/tracks_with_cutoff_0.05.txt')
-    # count_lines_in_file(good_tracks_file)
+    # count_lines_in_file(first_level_file)
 
     # scan_and_plot(85, 'france')
 
